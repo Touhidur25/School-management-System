@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using SchoolAdmission.Api.Data;
+using SchoolAdmission.Api.Endpoints;
 using SchoolAdmission.Api.Infrastructure;
+using SchoolAdmission.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +12,7 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(HoldOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddScoped<AdmissionService>();
 
 // The React app runs on another origin (localhost:3000), so allow cross-origin calls.
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
@@ -17,13 +20,15 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 
 var app = builder.Build();
 
+// CORS first, so error responses from the middleware below also carry CORS headers.
 app.UseCors();
+app.UseMiddleware<ApiExceptionMiddleware>();
 
 await DbInitializer.InitializeAsync(app.Services, app.Logger);
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-// Class and hold endpoints are added in the next steps.
+app.MapAdmissionEndpoints();
 
 app.Run();
 
