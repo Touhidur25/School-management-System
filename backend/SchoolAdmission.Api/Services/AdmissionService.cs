@@ -246,6 +246,124 @@ public class AdmissionService(AppDbContext db, TimeProvider clock, HoldOptions o
             r.ExpiresAt)).ToList();
     }
 
+    /// <summary>
+    /// Every application (any status, so expired and cancelled ones too), newest first,
+    /// optionally for one class. Used by the admin screen.
+    /// </summary>
+    public async Task<List<AdminHoldResponse>> ListAllHoldsAsync(string? classId)
+    {
+        var now = Now();
+        var rows = await (
+                from h in db.Holds.AsNoTracking()
+                join c in db.Classes.AsNoTracking() on h.ClassId equals c.Id
+                where classId == null || h.ClassId == classId
+                orderby h.CreatedAt descending, h.Id
+                select new
+                {
+                    h.Id, h.ClassId, ClassName = c.Name, h.StudentId, h.Status,
+                    h.CreatedAt, h.ExpiresAt, h.ConfirmedAt
+                })
+            .ToListAsync();
+
+        return rows.Select(r => new AdminHoldResponse(
+            r.Id, r.ClassId, r.ClassName, r.StudentId,
+            (r.Status == HoldStatus.Held && r.ExpiresAt <= now ? HoldStatus.Expired : r.Status).ToApi(),
+            r.CreatedAt, r.ExpiresAt, r.ConfirmedAt)).ToList();
+    }
+
+    /// <summary>
+    /// The school cancels an application or a confirmed admission. The seat is freed
+    /// and the student gets a notification. Cancelling twice is harmless (no second
+    /// notification). An application that already ran out of time cannot be cancelled.
+    /// </summary>
+    public async Task CancelByAdminAsync(string holdId)
+    {
+        var classId = await FindClassIdOfHoldAsync(holdId);
+        ApiException? failure = null;
+
+        await using (var tx = await db.Database.BeginTransactionAsync())
+        {
+            await LockClassAsync(classId);
+            var hold = await db.Holds.FirstOrDefaultAsync(h => h.Id == holdId) ?? throw HoldNotFound();
+
+            var now = Now();
+            switch (hold.Status)
+            {
+                case HoldStatus.Cancelled:
+                    break;
+                case HoldStatus.Expired:
+                    failure = HoldExpired();
+                    break;
+                case HoldStatus.Held when hold.ExpiresAt <= now:
+                    hold.Status = HoldStatus.Expired;
+                    failure = HoldExpired();
+                    break;
+                case HoldStatus.Held:
+                case HoldStatus.Confirmed:
+                    db.Notifications.Add(new Notification
+                    {
+                        Id = IdGenerator.New("n"),
+                        StudentId = hold.StudentId,
+                        HoldId = hold.Id,
+                        Type = NotificationTypes.AdmissionCancelled,
+                        PreviousStatus = hold.Status.ToApi(),
+                        CreatedAt = now
+                    });
+                    hold.Status = HoldStatus.Cancelled;
+                    break;
+            }
+
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+
+        if (failure is not null) throw failure;
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    public async Task<List<NotificationResponse>> ListNotificationsAsync(string studentId)
+    {
+        var rows = await (
+                from n in db.Notifications.AsNoTracking()
+                join h in db.Holds.AsNoTracking() on n.HoldId equals h.Id
+                join c in db.Classes.AsNoTracking() on h.ClassId equals c.Id
+                where n.StudentId == studentId
+                orderby n.CreatedAt descending, n.Id
+                select new
+                {
+                    n.Id, n.Type, n.HoldId, h.ClassId, ClassName = c.Name,
+                    n.PreviousStatus, n.CreatedAt, n.ReadAt
+                })
+            .Take(50)
+            .ToListAsync();
+
+        return rows.Select(r => new NotificationResponse(
+            r.Id, r.Type, r.HoldId, r.ClassId, r.ClassName, r.PreviousStatus, r.CreatedAt, r.ReadAt)).ToList();
+    }
+
+    public async Task MarkNotificationReadAsync(string notificationId, string studentId)
+    {
+        var notification = await db.Notifications.FirstOrDefaultAsync(n => n.Id == notificationId)
+            ?? throw new ApiException(404, "notification_not_found", "Notification not found.");
+        if (notification.StudentId != studentId)
+            throw new ApiException(403, "not_your_notification", "This notification belongs to another student.");
+
+        if (notification.ReadAt is null)
+        {
+            notification.ReadAt = Now();
+            await db.SaveChangesAsync();
+        }
+    }
+
+    public Task<int> MarkAllNotificationsReadAsync(string studentId)
+    {
+        var now = (DateTime?)Now();
+        return db.Notifications
+            .Where(n => n.StudentId == studentId && n.ReadAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, now));
+    }
+
     // --------------------------------------------------------------- helpers
 
     /// <summary>

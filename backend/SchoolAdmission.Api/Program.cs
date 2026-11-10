@@ -15,8 +15,9 @@ builder.Services.AddSingleton(HoldOptions.FromConfiguration(builder.Configuratio
 builder.Services.AddScoped<AdmissionService>();
 
 // The React app runs on another origin (localhost:3000), so allow cross-origin calls.
+// "Date" is exposed so the UI can line its expiry countdown up with the server's clock.
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+    p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("Date")));
 
 var app = builder.Build();
 

@@ -8,6 +8,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<SchoolClass> Classes => Set<SchoolClass>();
     public DbSet<Hold> Holds => Set<Hold>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -56,6 +57,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasDatabaseName("ix_holds_class_status_expires");
 
             e.HasIndex(x => x.StudentId).HasDatabaseName("ix_holds_student");
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.ToTable("notifications");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasMaxLength(32);
+            e.Property(x => x.StudentId).HasColumnName("student_id").HasMaxLength(17).IsRequired();
+            e.Property(x => x.HoldId).HasColumnName("hold_id").HasMaxLength(32).IsRequired();
+            e.Property(x => x.Type).HasColumnName("type").HasMaxLength(40).IsRequired();
+            e.Property(x => x.PreviousStatus).HasColumnName("previous_status").HasMaxLength(16).IsRequired();
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.ReadAt).HasColumnName("read_at");
+
+            e.HasOne(x => x.Hold)
+                .WithMany()
+                .HasForeignKey(x => x.HoldId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Keep this name in sync with DbInitializer.UpgradeSchemaAsync.
+            e.HasIndex(x => new { x.StudentId, x.CreatedAt }).HasDatabaseName("ix_notifications_student_created");
         });
     }
 }

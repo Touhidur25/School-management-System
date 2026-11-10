@@ -19,6 +19,17 @@ public record HoldConfirmedResponse(string HoldId, string Status);
 public record MyHoldResponse(
     string HoldId, string ClassId, string ClassName, string Status, DateTime ExpiresAt);
 
+/// <summary>One row of the admin's "all applications" list.</summary>
+public record AdminHoldResponse(
+    string HoldId, string ClassId, string ClassName, string StudentId, string Status,
+    DateTime AppliedAt, DateTime ExpiresAt, DateTime? ConfirmedAt);
+
+public record HoldCancelledResponse(string HoldId, string Status);
+
+public record NotificationResponse(
+    string NotificationId, string Type, string HoldId, string ClassId, string ClassName,
+    string PreviousStatus, DateTime CreatedAt, DateTime? ReadAt);
+
 public static class HoldStatusExtensions
 {
     /// <summary>API representation: "HELD", "CONFIRMED", "EXPIRED", "CANCELLED".</summary>

@@ -61,6 +61,35 @@ public static partial class AdmissionEndpoints
             var studentId = RequireStudentId(request);
             return Results.Ok(await svc.ListMyHoldsAsync(studentId));
         });
+
+        // Extra (not in the brief's list): all applications for the admin screen.
+        // Optional filter: GET /admin/holds?classId=c_123
+        app.MapGet("/admin/holds", async (string? classId, AdmissionService svc) =>
+            Results.Ok(await svc.ListAllHoldsAsync(classId)));
+
+        // Extra: the school cancels an application or confirmed admission; the student is notified.
+        app.MapPost("/admin/holds/{holdId}/cancel", async (string holdId, AdmissionService svc) =>
+        {
+            await svc.CancelByAdminAsync(holdId);
+            return Results.Ok(new HoldCancelledResponse(holdId, "CANCELLED"));
+        });
+
+        // Extra: a student's notifications (newest first), and marking them as read.
+        app.MapGet("/me/notifications", async (HttpRequest request, AdmissionService svc) =>
+            Results.Ok(await svc.ListNotificationsAsync(RequireStudentId(request))));
+
+        app.MapPost("/me/notifications/read-all", async (HttpRequest request, AdmissionService svc) =>
+        {
+            await svc.MarkAllNotificationsReadAsync(RequireStudentId(request));
+            return Results.NoContent();
+        });
+
+        app.MapPost("/me/notifications/{notificationId}/read",
+            async (string notificationId, HttpRequest request, AdmissionService svc) =>
+            {
+                await svc.MarkNotificationReadAsync(notificationId, RequireStudentId(request));
+                return Results.NoContent();
+            });
     }
 
     private static string RequireStudentId(HttpRequest request)
