@@ -1,0 +1,4 @@
+# Keep scripts that run inside Linux containers with Unix line endings, even when
+# git on Windows would otherwise convert them to CRLF (which breaks them).
+*.sh text eol=lf
+Dockerfile* text eol=lf

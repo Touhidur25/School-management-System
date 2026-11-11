@@ -1,0 +1,37 @@
+# Runs the backend tests against a throw-away PostgreSQL (no volume, so it is empty every run).
+#
+# Backend tests:
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from tests
+#   docker compose -f docker-compose.test.yml down -v
+# Frontend tests (separate profile, so they do not stop the backend run when they finish):
+#   docker compose -f docker-compose.test.yml --profile frontend run --build --rm frontend-tests
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: school_admission_test
+      POSTGRES_USER: school
+      POSTGRES_PASSWORD: school_pw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U school -d school_admission_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    environment:
+      TEST_DB_CONNECTION: Host=test-db;Port=5432;Database=school_admission_test;Username=school;Password=school_pw
+      Logging__LogLevel__Default: Warning
+      Logging__LogLevel__Microsoft: Warning
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+  frontend-tests:
+    profiles: ["frontend"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.test

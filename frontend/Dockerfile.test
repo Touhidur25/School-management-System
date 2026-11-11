@@ -1,0 +1,7 @@
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json ./
+COPY src ./src
+COPY tests ./tests
+# Uses Node's built-in test runner, so nothing needs to be installed.
+CMD ["node", "--test"]
