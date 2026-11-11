@@ -9,4 +9,4 @@ node_modules/
 dist/
 
 # Local env
-.env
+.env.example
